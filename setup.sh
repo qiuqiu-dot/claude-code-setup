@@ -7,21 +7,25 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
-log_ok() { echo -e "${GREEN}[OK]${NC} $*"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-log_err() { echo -e "${RED}[ERR]${NC} $*"; }
+log_info()  { echo -e "${BLUE}[INFO]${NC} $*"; }
+log_ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
+log_warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
+log_err()   { echo -e "${RED}[ERR]${NC} $*"; }
 
 CONFIG_DIR="$HOME/.claude-code-fcc"
 BIN_DIR="$HOME/.local/bin"
 START_SCRIPT="$BIN_DIR/claude"
 
+MODEL_ID=""
+API_BASE=""
+API_KEY=""
+ENABLE_ZH=false
+
 ask_model_config() {
-    echo
-    echo -e "${BLUE}=== Claude Code + FCC 配置向导 ===${NC}"
+    echo -e "${BLUE}=== Claude Code + FCC 安装配置 ===${NC}"
     echo
 
-    read -rp "Model ID (例如: claude-3-5-sonnet-20241022, gpt-4o, deepseek-chat): " MODEL_ID
+    read -rp "Model ID (如: gpt-4o, claude-3-5-sonnet, deepseek-chat): " MODEL_ID
     [[ -z "$MODEL_ID" ]] && { log_err "Model ID 不能为空"; exit 1; }
 
     read -rp "API Base URL (默认: https://api.openai.com/v1): " API_BASE
@@ -30,7 +34,7 @@ ask_model_config() {
     read -rp "API Key: " API_KEY
     [[ -z "$API_KEY" ]] && { log_err "API Key 不能为空"; exit 1; }
 
-    read -rp "是否启用 FCC Admin UI 汉化? [Y/n]: " ZH_CN
+    read -rp "启用 FCC Admin UI 汉化? [Y/n]: " ZH_CN
     ZH_CN=${ZH_CN:-Y}
     [[ "$ZH_CN" =~ ^[Yy]$ ]] && ENABLE_ZH=true || ENABLE_ZH=false
 
@@ -46,14 +50,15 @@ ask_model_config() {
 }
 
 install_deps() {
-    log_info "安装基础依赖..."
-    pkg update -y && pkg install -y nodejs npm git curl unzip python3
+    log_info "安装基础依赖 (可能需要 1-2 分钟)..."
+    DEBIAN_FRONTEND=noninteractive pkg update -y -o DPkg::Options::="--force-confdef" -o DPkg::Options::="--force-confold" \
+        && pkg install -y -o DPkg::Options::="--force-confdef" -o DPkg::Options::="--force-confold" nodejs npm git curl unzip python3
     log_ok "依赖安装完成"
 }
 
 install_claude_code() {
     log_info "安装 Claude Code..."
-    npm install -g @anthropic-ai/claude-code
+    npm install -g @anthropic-ai/claude-code --allow-scripts 2>/dev/null || npm install -g @anthropic-ai/claude-code
     log_ok "Claude Code 安装完成"
 }
 
@@ -96,95 +101,30 @@ EOF
 setup_zh_admin() {
     [[ "$ENABLE_ZH" != true ]] && return
 
-    log_info "下载并应用 FCC Admin UI 汉化..."
+    log_info "应用 FCC Admin UI 汉化..."
 
     FCC_ROOT=$(npm root -g)/free-claude-code
     ADMIN_DIR="$FCC_ROOT/admin"
 
     if [[ ! -d "$ADMIN_DIR" ]]; then
-        log_warn "未找到 FCC admin 目录，尝试从 GitHub 下载汉化包"
-        cd /tmp
-        git clone --depth=1 https://github.com/anthropics/free-claude-code-admin-zh 2>/dev/null || {
-            log_warn "汉化包下载失败，跳过汉化"
-            return
-        }
-        cp -r free-claude-code-admin-zh/* "$ADMIN_DIR/" 2>/dev/null || true
-        log_ok "汉化包应用完成"
-    else
-        cd "$ADMIN_DIR"
-        cat > locales/zh-CN.json <<'ZHEOF'
+        log_warn "未找到 FCC admin 目录，跳过汉化"
+        return
+    fi
+
+    mkdir -p "$ADMIN_DIR/locales"
+    cat > "$ADMIN_DIR/locales/zh-CN.json" <<'ZHEOF'
 {
-  "app": {
-    "title": "FCC 管理面板",
-    "subtitle": "Free Claude Code 代理管理"
-  },
-  "nav": {
-    "dashboard": "仪表盘",
-    "models": "模型管理",
-    "keys": "API Key 管理",
-    "logs": "请求日志",
-    "settings": "设置"
-  },
-  "dashboard": {
-    "totalRequests": "总请求数",
-    "totalTokens": "总 Token 数",
-    "avgLatency": "平均延迟",
-    "errorRate": "错误率",
-    "recentRequests": "最近请求"
-  },
-  "models": {
-    "title": "模型配置",
-    "addModel": "添加模型",
-    "modelId": "模型 ID",
-    "provider": "提供商",
-    "apiBase": "API 基础地址",
-    "apiKey": "API Key",
-    "enabled": "启用",
-    "actions": "操作",
-    "edit": "编辑",
-    "delete": "删除",
-    "save": "保存",
-    "cancel": "取消"
-  },
-  "keys": {
-    "title": "API Key 管理",
-    "addKey": "添加 Key",
-    "key": "Key",
-    "name": "名称",
-    "usage": "用量",
-    "lastUsed": "最后使用"
-  },
-  "logs": {
-    "title": "请求日志",
-    "method": "方法",
-    "path": "路径",
-    "status": "状态",
-    "latency": "耗时",
-    "tokens": "Tokens",
-    "time": "时间",
-    "request": "请求体",
-    "response": "响应体"
-  },
-  "settings": {
-    "title": "系统设置",
-    "port": "端口",
-    "host": "监听地址",
-    "logLevel": "日志级别",
-    "language": "语言",
-    "save": "保存设置"
-  },
-  "common": {
-    "loading": "加载中...",
-    "success": "成功",
-    "error": "错误",
-    "confirm": "确认",
-    "close": "关闭",
-    "refresh": "刷新"
-  }
+  "app": { "title": "FCC 管理面板", "subtitle": "Free Claude Code 代理管理" },
+  "nav": { "dashboard": "仪表盘", "models": "模型管理", "keys": "API Key 管理", "logs": "请求日志", "settings": "设置" },
+  "dashboard": { "totalRequests": "总请求数", "totalTokens": "总 Token 数", "avgLatency": "平均延迟", "errorRate": "错误率", "recentRequests": "最近请求" },
+  "models": { "title": "模型配置", "addModel": "添加模型", "modelId": "模型 ID", "provider": "提供商", "apiBase": "API 基础地址", "apiKey": "API Key", "enabled": "启用", "actions": "操作", "edit": "编辑", "delete": "删除", "save": "保存", "cancel": "取消" },
+  "keys": { "title": "API Key 管理", "addKey": "添加 Key", "key": "Key", "name": "名称", "usage": "用量", "lastUsed": "最后使用" },
+  "logs": { "title": "请求日志", "method": "方法", "path": "路径", "status": "状态", "latency": "耗时", "tokens": "Tokens", "time": "时间", "request": "请求体", "response": "响应体" },
+  "settings": { "title": "系统设置", "port": "端口", "host": "监听地址", "logLevel": "日志级别", "language": "语言", "save": "保存设置" },
+  "common": { "loading": "加载中...", "success": "成功", "error": "错误", "confirm": "确认", "close": "关闭", "refresh": "刷新" }
 }
 ZHEOF
-        log_ok "中文语言包已写入"
-    fi
+    log_ok "中文语言包已写入"
 }
 
 create_start_script() {
@@ -258,6 +198,7 @@ print_summary() {
 }
 
 main() {
+    log_info "开始安装..."
     ask_model_config
     install_deps
     install_claude_code
