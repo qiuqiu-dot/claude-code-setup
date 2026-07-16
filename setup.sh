@@ -63,9 +63,23 @@ install_claude_code() {
 }
 
 install_fcc() {
-    log_info "安装 FCC (Free Claude Code)..."
-    npm install -g free-claude-code
-    log_ok "FCC 安装完成"
+    log_info "检查 FCC 是否已安装..."
+    
+    # FCC 需要 Python 3.14 glibc 版，且依赖 tiktoken 需要 Rust 编译
+    # 无法通过 pip 自动安装，必须手动安装
+    if [[ -d "$HOME/dev/free-claude-code-main" ]]; then
+        log_ok "FCC 源码已存在: $HOME/dev/free-claude-code-main"
+    else
+        log_err "未找到 FCC 源码目录"
+        log_info "请手动安装:"
+        echo "  git clone https://github.com/Alishahryar1/free-claude-code.git ~/dev/free-claude-code-main"
+        echo "  cd ~/dev/free-claude-code-main"
+        echo "  # 确保 ~/.bashrc 中有:"
+        echo "  # export PATH=\"\$HOME/bin:\$PATH\""
+        echo "  # 然后创建 ~/bin/fcc-server 等快捷命令"
+        exit 1
+    fi
+    log_ok "FCC 检查完成"
 }
 
 configure_fcc() {
@@ -87,7 +101,7 @@ EOF
 {
   "claudeCodePath": "claude",
   "configPath": "$CONFIG_DIR/config.json",
-  "port": 3456,
+  "port": 8082,
   "host": "0.0.0.0",
   "adminEnabled": true,
   "adminPath": "/admin",
@@ -103,14 +117,20 @@ setup_zh_admin() {
 
     log_info "应用 FCC Admin UI 汉化..."
 
-    FCC_ROOT=$(npm root -g)/free-claude-code
-    ADMIN_DIR="$FCC_ROOT/admin"
+    # 优先使用源码路径，其次使用 npm 路径
+    FCC_ROOT=""
+    if [[ -d "$HOME/dev/free-claude-code-main/src/free_claude_code" ]]; then
+        FCC_ROOT="$HOME/dev/free-claude-code-main/src/free_claude_code"
+    elif [[ -d "$(npm root -g)/free-claude-code" ]]; then
+        FCC_ROOT="$(npm root -g)/free-claude-code"
+    fi
 
-    if [[ ! -d "$ADMIN_DIR" ]]; then
-        log_warn "未找到 FCC admin 目录，跳过汉化"
+    if [[ -z "$FCC_ROOT" ]]; then
+        log_warn "未找到 FCC 安装目录，跳过汉化"
         return
     fi
 
+    ADMIN_DIR="$FCC_ROOT/config/admin"
     mkdir -p "$ADMIN_DIR/locales"
     cat > "$ADMIN_DIR/locales/zh-CN.json" <<'ZHEOF'
 {
@@ -185,14 +205,14 @@ print_summary() {
     echo "  1. 重新打开终端，或执行: source $SHELL_RC"
     echo "  2. 直接输入: claude"
     echo
-    echo "管理面板: http://localhost:3456/admin"
+    echo "管理面板: http://localhost:8082/admin"
     echo "配置目录: $CONFIG_DIR"
     echo "启动脚本: $START_SCRIPT"
     echo
     echo "常用命令:"
     echo "  claude              # 启动 FCC 代理"
     echo "  claude --help       # 查看帮助"
-    echo "  claude --port 8080  # 指定端口"
+    echo "  claude --port 8082  # 指定端口"
     echo
     log_info "现在可以运行 'claude' 开始使用了"
 }
